@@ -62,7 +62,10 @@ router.post('/', auth, async (req, res) => {
 router.post('/:id/invite', auth, async (req, res) => {
     try {
         const { email } = req.body;
-        const board = await Board.findOne({ _id: req.params.id, owner: req.userId });
+        const board = await Board.findOne({
+            _id: req.params.id,
+            $or: [{ owner: req.userId }, { collaborators: req.userId }]
+        });
         
         if (!board) {
             return res.status(404).json({ error: 'Board not found or not authorized' });
@@ -85,7 +88,12 @@ router.post('/:id/invite', auth, async (req, res) => {
         await board.save();
 
         const inviter = await User.findById(req.userId);
-        sendInviteEmail(email, inviter.name, board.name);
+        
+        try {
+            await sendInviteEmail(email, inviter.name, board.name);
+        } catch (emailError) {
+            console.error('Email failed but invite succeeded:', emailError);
+        }
         
         const updatedBoard = await Board.findById(board._id)
             .populate('collaborators', 'name email')
@@ -93,6 +101,7 @@ router.post('/:id/invite', auth, async (req, res) => {
         
         res.json({ message: 'User invited', board: updatedBoard });
     } catch (error) {
+        console.error('Invite error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const Board = require('../models/Board');
 const Card = require('../models/Card');
 const User = require('../models/User');
+const { sendInviteEmail } = require('../utils/email');
 
 const router = express.Router();
 
@@ -82,6 +83,9 @@ router.post('/:id/invite', auth, async (req, res) => {
         
         board.collaborators.push(userToInvite._id);
         await board.save();
+
+        const inviter = await User.findById(req.userId);
+        sendInviteEmail(email, inviter.name, board.name);
         
         const updatedBoard = await Board.findById(board._id)
             .populate('collaborators', 'name email')

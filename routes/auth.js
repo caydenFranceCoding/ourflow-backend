@@ -5,44 +5,54 @@ const User = require('../models/User');
 
 const router = express.Router();
 
-router.use((req, res, next) => {
-    console.log('AUTH ROUTE HIT:', req.method, req.url);
-    next();
+const auth = (req, res, next) => {
+    try {
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        if (!token) return res.status(401).json({ error: 'No token provided' });
+        
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.userId = decoded.userId;
+        next();
+    } catch (error) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
+router.get('/me', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.json({ user: { id: user._id, email: user.email, name: user.name } });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 router.post('/register', async (req, res) => {
     try {
-        console.log('Request body:', req.body);
-        
         const { email, password, name } = req.body;
         
         if (!email || !password || !name) {
-            console.log('Missing fields');
             return res.status(400).json({ error: 'All fields required' });
         }
 
-        console.log('Checking for existing user...');
         const existingUser = await User.findOne({ email });
         if (existingUser) {
-            console.log('User already exists');
             return res.status(400).json({ error: 'Email already exists' });
         }
 
-        console.log('Hashing password...');
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        console.log('Creating user...');
         const user = new User({ email, password: hashedPassword, name });
         await user.save();
 
-        console.log('User created, generating token...');
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
         
-        console.log('Success!');
         res.status(201).json({ token, user: { id: user._id, email, name } });
     } catch (error) {
-        console.error('REGISTER ERROR:', error.message);
-        console.error('Full error:', error);
+        console.error('REGISTER ERROR:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
